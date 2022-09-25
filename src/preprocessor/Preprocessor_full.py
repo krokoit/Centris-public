@@ -99,12 +99,19 @@ def redundancyElimination():
 						if eachLine == '' or eachLine == ' ':
 							continue
 
-						hashval = eachLine.split('\t')[0]
+						eachLineSplitted = eachLine.split('\t')
+						hashval = eachLineSplitted[0]
 						if hashval not in signature:
-							signature[hashval]	 	= []
+							signature[hashval]	 	= {"vers": [], "info": ""}
 							tempDateDict[hashval] 	= []
-						signature[hashval].append(str(idx-1))
-						
+
+
+						signature[hashval]["vers"].append(str(idx-1))
+
+						if not signature[hashval]["info"]:
+							signature[hashval]["info"] = eachLineSplitted[1]
+
+
 						if versionName in verDateDict:
 							tempDateDict[hashval].append(verDateDict[versionName])
 						else:
@@ -146,7 +153,8 @@ def redundancyElimination():
 		for hashval in signature:
 			temp = {}
 			temp["hash"] = hashval
-			temp["vers"] = signature[hashval]
+			temp["vers"] = signature[hashval]["vers"]
+			temp["info"] = signature[hashval]["info"]
 			saveJson.append(temp)
 		f.write(json.dumps(saveJson))
 		f.close()
