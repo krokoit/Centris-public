@@ -14,11 +14,13 @@ import tlsh # Please intall python-tlsh
 """GLOBALS"""
 
 currentPath	= os.getcwd()
-gitCloneURLS= currentPath + "/sample" 			# Please change to the correct file (the "sample" file contains only 10 git-clone urls)
+# gitCloneURLS= currentPath + "/sample" 			# Please change to the correct file (the "sample" file contains only 10 git-clone urls)
+gitCloneURLS= currentPath + "/droneURLS" 			# Please change to the correct file (the "sample" file contains only 10 git-clone urls)
 clonePath 	= currentPath + "/repo_src/"		# Default path
 tagDatePath = currentPath + "/repo_date/"		# Default path
 resultPath	= currentPath + "/repo_functions/"	# Default path
-ctagsPath	= "/usr/local/bin/ctags" 			# Ctags binary path (please specify your own ctags path)
+# ctagsPath	= "/usr/local/bin/ctags" 			# Ctags binary path (please specify your own ctags path)
+ctagsPath	= "/usr/bin/ctags" 			# Ctags binary path (please specify your own ctags path)
 
 # Generate directories
 shouldMake = [clonePath, tagDatePath, resultPath]
@@ -26,6 +28,25 @@ for eachRepo in shouldMake:
 	if not os.path.isdir(eachRepo):
 		os.mkdir(eachRepo)
 
+def ctagsStr2json(ctagsStr):
+	ctagsJson = {}
+	ctagsStr = re.sub(r'/\^.*/;\"', '', ctagsStr)
+
+	ctagsStrSplitted = ctagsStr.split("\t")
+
+	name = ctagsStrSplitted[0]
+	path = ctagsStrSplitted[1]
+
+	ctagsJson['name'] = name
+	ctagsJson['path'] = path
+
+	for _ in ctagsStrSplitted[3:]:
+		kv = _.split(":", 1)
+		key = kv[0]
+		value = kv[1]
+		ctagsJson[key] = value
+
+	return ctagsJson
 
 # Generate TLSH
 def computeTlsh(string):
@@ -67,32 +88,35 @@ def hashing(repoPath):
 			if file.endswith(possible):
 				try:
 					# Execute Ctgas command
-					functionList 	= subprocess.check_output(ctagsPath + ' -f - --kinds-C=* --fields=neKSt "' + filePath + '"', stderr=subprocess.STDOUT, shell=True).decode()
-
-					f = open(filePath, 'r', encoding = "UTF-8")
+					ctagsResult 		= subprocess.check_output(ctagsPath + ' -f - --kinds-C=* --fields=* "' + filePath + '"', stderr=subprocess.STDOUT, shell=True).decode()
+					f = open(filePath, 'r', encoding = "latin1")
 
 					# For parsing functions
 					lines 		= f.readlines()
-					allFuncs 	= str(functionList).split('\n')
-					func   		= re.compile(r'(function)')
-					number 		= re.compile(r'(\d+)')
+					ctagsResultSplitted	= str(ctagsResult).split('\n')
+
 					funcSearch	= re.compile(r'{([\S\s]*)}')
 					tmpString	= ""
 					funcBody	= ""
-
 					fileCnt 	+= 1
 
-					for i in allFuncs:
-						elemList	= re.sub(r'[\t\s ]{2,}', '', i)
-						elemList 	= elemList.split('\t')
+					for ctagsStr in ctagsResultSplitted:
+						if not ctagsStr:
+							continue
+
+						ctagsJson = ctagsStr2json(ctagsStr)
 						funcBody 	= ""
 
-						if i != '' and len(elemList) >= 8 and func.fullmatch(elemList[3]):
-							funcStartLine 	 = int(number.search(elemList[4]).group(0))
-							funcEndLine 	 = int(number.search(elemList[7]).group(0))
+						requiredField = ['line', 'end', 'signature']
+						if ctagsJson['kind'] == 'function' and all([x in ctagsJson for x in requiredField]):
+							funcName = ctagsJson['name']
+							funcSignature = ctagsJson['signature']
+							funcScope = ctagsJson.get('scope', '')
 
-							tmpString	= ""
-							tmpString	= tmpString.join(lines[funcStartLine - 1 : funcEndLine])
+							funcStartLine = int(ctagsJson['line'])
+							funcEndLine = int(ctagsJson['end'])
+
+							tmpString	= "".join(lines[funcStartLine - 1 : funcEndLine])
 
 							if funcSearch.search(tmpString):
 								funcBody = funcBody + funcSearch.search(tmpString).group(1)
@@ -111,7 +135,7 @@ def hashing(repoPath):
 							storedPath = filePath.replace(repoPath, "")
 							if funcHash not in resDict:
 								resDict[funcHash] = []
-							resDict[funcHash].append(storedPath)
+							resDict[funcHash].append((storedPath, funcName, funcSignature, funcScope))
 
 							lineCnt += len(lines)
 							funcCnt += 1
@@ -120,7 +144,9 @@ def hashing(repoPath):
 					print("Parser Error:", e)
 					continue
 				except Exception as e:
-					print ("Subprocess failed", e)
+					print (ctagsStr)
+					print (ctagsJson)
+					print ("hashing Subprocess failed", e, ":", filePath)
 					continue
 
 	return resDict, fileCnt, funcCnt, lineCnt 
@@ -136,13 +162,11 @@ def indexing(resDict, title, filePath):
 			continue
 
 		fres.write(hashval)
-		
-		for funcPath in resDict[hashval]:
-			fres.write('\t' + funcPath)
+		fres.write('\t')
+		fres.write(str(resDict[hashval]))
 		fres.write('\n')
 
 	fres.close()
-
 
 def main():
 	with open(gitCloneURLS, 'r', encoding = "UTF-8") as fp:
@@ -190,15 +214,22 @@ def main():
 
 				else:
 					for tag in str(tagResult).split('\n'):
-						# Generate function hashes for each tag (version)
+						if not tag:
+							continue
 
-						checkoutCommand	= subprocess.check_output("git checkout -f " + tag, stderr = subprocess.STDOUT, shell = True)
+						# Generate function hashes for each tag (version)
+						checkoutCommand	= subprocess.check_output("git checkout -f tags/" + tag, stderr = subprocess.STDOUT, shell = True)
+						print("current tag: ", tag)
 						resDict, fileCnt, funcCnt, lineCnt = hashing(clonePath + repoName)
 						
 						if len(resDict) > 0:
 							if not os.path.isdir(resultPath + repoName):
 								os.mkdir(resultPath + repoName)
 							title = '\t'.join([repoName, str(fileCnt), str(funcCnt), str(lineCnt)])
+							
+							# Deal with tags that contain "/" character
+							if "/" in tag:
+								tag = tag.replace("/", "@@@")
 							resultFilePath 	= resultPath + repoName + '/fuzzy_' + tag + '.hidx'
 						
 							indexing(resDict, title, resultFilePath)
@@ -208,7 +239,7 @@ def main():
 				print("Parser Error:", e)
 				continue
 			except Exception as e:
-				print ("Subprocess failed", e)
+				print ("main Subprocess failed", e)
 				continue
 
 """ EXECUTE """
