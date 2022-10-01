@@ -11,6 +11,7 @@ import re
 import shutil
 import json
 import math
+import ast
 
 """GLOBALS"""
 currentPath		= os.getcwd()
@@ -35,6 +36,31 @@ for eachRepo in shouldMake:
 		os.mkdir(eachRepo)
 
 funcDateDict	= {}
+
+
+def removeVarNameInSig(funcInfoStr: str):
+	funcInfoList = eval(funcInfoStr)
+	newfuncInfoList = []
+	for funcInfo in funcInfoList:
+		path, name, sig, scope = funcInfo
+
+		# if there is no arguments
+		if sig == "()":
+			newfuncInfoList.append(funcInfo)
+		# if there is argument(s), remove its variable name
+		else:
+			sig = sig[1:-1]
+			sigSplitted = sig.split(",")
+
+			sigSplitted = [x.rsplit(" ", 1)[0] for x in sigSplitted]
+			newSig = ", ".join(sigSplitted)
+			newSig = "(" + newSig + ")"
+
+			newfuncInfo = (path, name, newSig, scope)
+			newfuncInfoList.append(newfuncInfo)
+
+	newfuncInfoStr = str(newfuncInfoList)
+	return newfuncInfoStr
 
 
 def extractVerDate(repoName):
@@ -109,7 +135,7 @@ def redundancyElimination():
 						signature[hashval]["vers"].append(str(idx-1))
 
 						if not signature[hashval]["info"]:
-							signature[hashval]["info"] = eachLineSplitted[1]
+							signature[hashval]["info"] = removeVarNameInSig(eachLineSplitted[1])
 
 
 						if versionName in verDateDict:
