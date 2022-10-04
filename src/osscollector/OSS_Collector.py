@@ -200,39 +200,35 @@ def main():
 				lineCnt = 0
 
 
-				if tagResult == "":
-					# No tags, only master repo
+				# Indexing for latest commit
+				print("current tag: latest commit")
+				resDict, fileCnt, funcCnt, lineCnt = hashing(clonePath + repoName)
+				if len(resDict) > 0:
+					if not os.path.isdir(resultPath + repoName):
+						os.mkdir(resultPath + repoName)
+					title = '\t'.join([repoName, str(fileCnt), str(funcCnt), str(lineCnt)])
+					resultFilePath 	= resultPath + repoName + '/fuzzy_' + repoName + '.hidx' # Default file name: "fuzzy_OSSname.hidx"
+					indexing(resDict, title, resultFilePath)
 
+				# Indexing for previous tags
+				for tag in str(tagResult).split('\n'):
+					if not tag:
+						continue
+
+					# Generate function hashes for each tag (version)
+					checkoutCommand	= subprocess.check_output("git checkout -f tags/" + tag, stderr = subprocess.STDOUT, shell = True)
+					print("current tag: ", tag)
 					resDict, fileCnt, funcCnt, lineCnt = hashing(clonePath + repoName)
 					if len(resDict) > 0:
 						if not os.path.isdir(resultPath + repoName):
 							os.mkdir(resultPath + repoName)
 						title = '\t'.join([repoName, str(fileCnt), str(funcCnt), str(lineCnt)])
-						resultFilePath 	= resultPath + repoName + '/fuzzy_' + repoName + '.hidx' # Default file name: "fuzzy_OSSname.hidx"
 						
+						# Deal with tags that contain "/" character
+						if "/" in tag:
+							tag = tag.replace("/", "@@@")
+						resultFilePath 	= resultPath + repoName + '/fuzzy_' + tag + '.hidx'
 						indexing(resDict, title, resultFilePath)
-
-				else:
-					for tag in str(tagResult).split('\n'):
-						if not tag:
-							continue
-
-						# Generate function hashes for each tag (version)
-						checkoutCommand	= subprocess.check_output("git checkout -f tags/" + tag, stderr = subprocess.STDOUT, shell = True)
-						print("current tag: ", tag)
-						resDict, fileCnt, funcCnt, lineCnt = hashing(clonePath + repoName)
-						
-						if len(resDict) > 0:
-							if not os.path.isdir(resultPath + repoName):
-								os.mkdir(resultPath + repoName)
-							title = '\t'.join([repoName, str(fileCnt), str(funcCnt), str(lineCnt)])
-							
-							# Deal with tags that contain "/" character
-							if "/" in tag:
-								tag = tag.replace("/", "@@@")
-							resultFilePath 	= resultPath + repoName + '/fuzzy_' + tag + '.hidx'
-						
-							indexing(resDict, title, resultFilePath)
 						
 
 			except subprocess.CalledProcessError as e:
